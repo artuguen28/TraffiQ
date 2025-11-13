@@ -3,12 +3,15 @@ import cv2
 from tracker import VehicleTracker
 from counter import LaneCounter
 from visualizer import Visualizer
+from database_client import DatabaseClient
 
 def main(model_path, input_path, output_path):
     tracker = VehicleTracker(model_path)
     line_y = 1000
     lane_regions = [(0, 650), (800, 1100), (1200, 1600)]
-    counter = LaneCounter(lane_regions, line_y)
+    counter = LaneCounter(lane_regions, line_y, "0001")
+    db_client = DatabaseClient()
+
     visualizer = Visualizer(line_y, lane_regions)
 
     cap = cv2.VideoCapture(input_path)
@@ -31,12 +34,16 @@ def main(model_path, input_path, output_path):
 
         writer.write(frame)
 
-        if counter.periodic_save(interval=9):
+        
+
+        if counter.periodic_save(interval=7, db_client=db_client):
             print(f"[SAVE] Counts at {frame_count/fps:.1f}s → {counts}")
 
         frame_count += 1
         if frame_count % 30 == 0:
             print(f"Processed {frame_count} frames...")
+
+    db_client.close()
 
     cap.release()
     writer.release()
