@@ -207,4 +207,9 @@ marimo/_lsp/
 __marimo__/
 
 
-onnx_model/
+model
+postgres_data
+kaggle_dataset_analysis
+
+*.mp4
+
