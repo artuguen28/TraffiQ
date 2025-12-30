@@ -1,58 +1,82 @@
 import os
 from dotenv import load_dotenv
-from langchain_ollama import OllamaLLM
 
 from langchain_community.utilities import SQLDatabase
-from langchain_experimental.sql import SQLDatabaseSequentialChain
+from langchain_openai import ChatOpenAI
+from langchain_experimental.sql import SQLDatabaseChain
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-
 
 load_dotenv()
 
+# ---------------------------- SQL Cleaner ----------------------------
+def clean_sql(text: str) -> str:
+    return (
+        text.replace("```sql", "")
+            .replace("```", "")
+            .strip()
+    )
 
+
+# ---------------------------- Main Logic ----------------------------
 def run_query(question: str):
     db_url = os.getenv("DATABASE_URL")
-    llm_model = os.getenv("LLM_MODEL")
+    model_name = os.getenv("MODEL_NAME")
 
     if not db_url:
         raise ValueError("DATABASE_URL is missing in .env file.")
-    if not llm_model:
-        raise ValueError("LLM_MODEL is missing in .env file.")
+    if not model_name:
+        raise ValueError("MODEL_NAME is missing in .env file.")
+    if not os.getenv("OPENAI_API_KEY"):
+        raise ValueError("OPENAI_API_KEY is missing in .env file.")
 
     db = SQLDatabase.from_uri(db_url)
-    model = OllamaLLM(model=llm_model)
 
-
-    sql_chain = SQLDatabaseSequentialChain.from_llm(
-        llm=model,
-        db=db,
-        verbose=False,
-        return_intermediate_steps=False
-    )
-
-    sql_result = sql_chain.invoke(question)
-
-    answer_prompt = ChatPromptTemplate.from_messages([
-        (
-            "system",
-            "You answer questions about the traffic database in clear natural language. "
-            "Avoid mentioning SQL or technical details. Keep it concise and helpful."
-        ),
-        (
-            "human",
-            "Here is the data returned from the database:\n\n{data}\n\n"
-            "Explain it clearly as the final answer."
-        )
+    sql_prompt = ChatPromptTemplate.from_messages([
+        ("system", "You ONLY write SQL queries. Don't explain."),
+        ("human", "{input}")
     ])
 
-    final_answer = (
-        answer_prompt | model | StrOutputParser()
-    ).invoke({"data": sql_result})
+    sql_llm = ChatOpenAI(model=model_name, temperature=0)
 
-    return final_answer
+    sql_chain = SQLDatabaseChain.from_llm(
+        llm=sql_llm,
+        db=db,
+        prompt=sql_prompt,
+        verbose=True
+    )
+
+    # Generate SQL
+    raw_sql = sql_chain.invoke(question)
+    sql_query = clean_sql(str(raw_sql))
+
+    print(sql_query)
+
+    # Execute SQL manually
+    sql_result = db.run(sql_query)
+
+    # # Explanation
+    # answer_llm = ChatOpenAI(model=model_name, temperature=0.6)
+    # final_answer = answer_llm.invoke([
+    #     {
+    #         "role": "system",
+    #         "content": (
+    #             "You explain database results in clear natural language. "
+    #             "Avoid technical terms."
+    #         )
+    #     },
+    #     {
+    #         "role": "user",
+    #         "content": (
+    #             f"Here is the data returned from the database:\n\n{sql_result}\n\n"
+    #             "Explain it clearly."
+    #         )
+    #     }
+    # ]).content
+
+    # return final_answer
 
 
+# ------------------ CLI Loop ------------------
 if __name__ == "__main__":
     while True:
         q = input("\nAsk (or 'exit'): ")
