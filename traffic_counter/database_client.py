@@ -1,6 +1,5 @@
 import psycopg2
 import json
-from datetime import datetime
 
 class DatabaseClient:
     def __init__(self, host="localhost", db="traffic_db", user="traffic_user", password="traffic_pass", port=5432):
@@ -15,12 +14,28 @@ class DatabaseClient:
 
     def save_interval(self, cam_id, lane_counts, max_cars):
         query = """
-            INSERT INTO traffic_summary (cam_id, timestamp, lane_counts, max_cars_in_frame)
-            VALUES (%s, NOW(), %s, %s);
+            INSERT INTO traffic_summary (cam_id, lane_counts, max_cars_in_frame)
+            VALUES (%s, %s, %s);
         """
         with self.conn.cursor() as cur:
             cur.execute(query, (cam_id, json.dumps(lane_counts), max_cars))
-        self.conn.commit()
+
+    def save_camera(self, cam_id, frame_width, frame_height, lines):
+        query = """
+            INSERT INTO cameras (cam_id, frame_width, frame_height, lines)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (cam_id)
+            DO UPDATE SET
+                frame_width = EXCLUDED.frame_width,
+                frame_height = EXCLUDED.frame_height,
+                lines = EXCLUDED.lines,
+                created_at = NOW();
+        """
+        with self.conn.cursor() as cur:
+            cur.execute(
+                query,
+                (cam_id, frame_width, frame_height, json.dumps(lines))
+            )
 
     def close(self):
         if self.conn:

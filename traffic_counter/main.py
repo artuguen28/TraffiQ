@@ -40,7 +40,7 @@ def main():
     start_time = time.time()
 
     # --- Main Loop ---
-    while frame_count < 420:
+    while frame_count < 120:
         active_pipelines = 0
         for p in pipelines:
             ok = p.process_frame()
