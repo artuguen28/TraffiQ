@@ -1,11 +1,20 @@
+import argparse
 import cv2
 import math
 import tkinter as tk
 import copy
 from traffic_counter.database_client import DatabaseClient  # your class from earlier
 
+# ---------------- Command-line arguments ----------------
+parser = argparse.ArgumentParser(description="Traffic camera line editor")
+parser.add_argument("--video", type=str, required=True, help="Path to the video file")
+parser.add_argument("--camera", type=str, required=True, help="Camera ID to save lines")
+args = parser.parse_args()
+
+VIDEO_PATH = args.video
+CAM_ID = args.camera
+
 # ---------------- Config ----------------
-VIDEO_PATH = "./traffic_cameras/camera_02.mp4"
 WINDOW_NAME = "Line Editor"
 
 BTN_SAVE_TL = (10, 10)
@@ -27,8 +36,6 @@ SELECT_RADIUS = 10
 
 MARGIN = 100
 
-CAM_ID = "cam_02"  # change this per camera
-
 db = DatabaseClient()  # initialize your database client
 # ---------------------------------------
 
@@ -43,11 +50,11 @@ dragging = False
 drag_info = None
 fullscreen = False
 
+# ---------------- Functions ----------------
 
 def push_undo():
     undo_stack.append(copy.deepcopy(lines))
     redo_stack.clear()
-
 
 def undo():
     if not undo_stack:
@@ -56,7 +63,6 @@ def undo():
     lines.clear()
     lines.extend(undo_stack.pop())
 
-
 def redo():
     if not redo_stack:
         return
@@ -64,12 +70,10 @@ def redo():
     lines.clear()
     lines.extend(redo_stack.pop())
 
-
 def get_screen_size():
     root = tk.Tk()
     root.withdraw()
     return root.winfo_screenwidth(), root.winfo_screenheight()
-
 
 def draw_button(img, tl, br, text):
     cv2.rectangle(img, tl, br, (50, 50, 50), -1)
@@ -85,14 +89,11 @@ def draw_button(img, tl, br, text):
         cv2.LINE_AA,
     )
 
-
 def inside_rect(x, y, tl, br):
     return tl[0] <= x <= br[0] and tl[1] <= y <= br[1]
 
-
 def dist(p1, p2):
     return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
-
 
 def find_handle(x, y):
     for i, (x1, y1, x2, y2) in enumerate(lines):
@@ -101,7 +102,6 @@ def find_handle(x, y):
         if dist((x, y), (x2, y2)) < SELECT_RADIUS:
             return i, 1
     return None
-
 
 def mouse_callback(event, x, y, flags, param):
     global drawing, start_point, dragging, drag_info
@@ -114,6 +114,7 @@ def mouse_callback(event, x, y, flags, param):
         if inside_rect(ix, iy, BTN_SAVE_TL, BTN_SAVE_BR):
             db.save_camera(
                 cam_id=CAM_ID,
+                video_path=VIDEO_PATH,
                 frame_width=base.shape[1],
                 frame_height=base.shape[0],
                 lines=lines
@@ -162,14 +163,14 @@ def mouse_callback(event, x, y, flags, param):
             drawing = False
             start_point = None
 
+# ---------------- Load video ----------------
 
-# Load first frame
 cap = cv2.VideoCapture(VIDEO_PATH)
 ret, frame = cap.read()
 cap.release()
 
 if not ret:
-    raise RuntimeError("Could not read video")
+    raise RuntimeError(f"Could not read video: {VIDEO_PATH}")
 
 base = frame.copy()
 h, w = base.shape[:2]
@@ -184,6 +185,8 @@ scale = min(
 cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
 cv2.resizeWindow(WINDOW_NAME, int(w * scale), int(h * scale))
 cv2.setMouseCallback(WINDOW_NAME, mouse_callback)
+
+# ---------------- Main loop ----------------
 
 while True:
     display = base.copy()

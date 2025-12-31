@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS cameras (
     id SERIAL PRIMARY KEY,
     cam_id VARCHAR(50) UNIQUE NOT NULL,
+    video_path TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     frame_width INTEGER NOT NULL CHECK (frame_width > 0),
     frame_height INTEGER NOT NULL CHECK (frame_height > 0),

@@ -1,38 +1,36 @@
+import os
 import time
 from camera import Camera
 from database_client import DatabaseClient
 from detection_pipeline import CameraPipeline
 
-
 def main():
-    # --- Define lanes for each camera ---
-
     model_path = "model/yolo12l.pt"
+    output_dir = "output_videos"
+    os.makedirs(output_dir, exist_ok=True)
 
-    cam_01 = Camera(
-        cam_id="CAM_01",
-        lanes=[
-            (0, 1000, 650, 1000), 
-            (800, 1000, 1100, 1000), 
-            (1200, 1000, 1600, 1000)
-        ],
-        camera_video="traffic_cameras/camera_01.mp4",
-        detection_output="cam1_tracked_output.mp4"
-    )
+    # --- Initialize database client ---
+    db_client = DatabaseClient()
 
-    cam_02 = Camera(
-        cam_id="CAM_02",
-        lanes=[
-            (400, 700, 850, 700), 
-            (1000, 700, 1500, 700)
-        ],
-        camera_video="traffic_cameras/camera_02.mp4",
-        detection_output="cam2_tracked_output.mp4"
-    )
+    # --- Get registered cameras from the database ---
+    cameras_data = db_client.get_registered_cameras()  # you need to implement this method
+    # Expected to return a list of dicts with keys: cam_id, video_path, lines
+
+    cameras = []
+    for cam_data in cameras_data:
+        cam_id = cam_data["cam_id"]
+        lanes = cam_data["lines"]  # assuming stored as list of tuples: [(x1,y1,x2,y2), ...]
+        video_path = cam_data["video_path"]
+        detection_output = os.path.join(output_dir, f"{cam_id}.mp4")
+        cameras.append(Camera(
+            cam_id=cam_id,
+            lanes=lanes,
+            camera_video=video_path,
+            detection_output=detection_output
+        ))
 
     # --- Initialize pipelines ---
-    pipelines = [CameraPipeline(cam, model_path) for cam in [cam_01, cam_02]]
-    db_client = DatabaseClient()
+    pipelines = [CameraPipeline(cam, model_path) for cam in cameras]
 
     # Use the lowest FPS for synchronization
     fps = min(p.fps for p in pipelines)
@@ -40,7 +38,7 @@ def main():
     start_time = time.time()
 
     # --- Main Loop ---
-    while frame_count < 120:
+    while True:
         active_pipelines = 0
         for p in pipelines:
             ok = p.process_frame()
