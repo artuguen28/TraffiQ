@@ -54,27 +54,6 @@ def run_query(question: str):
     # Execute SQL manually
     sql_result = db.run(sql_query)
 
-    # # Explanation
-    # answer_llm = ChatOpenAI(model=model_name, temperature=0.6)
-    # final_answer = answer_llm.invoke([
-    #     {
-    #         "role": "system",
-    #         "content": (
-    #             "You explain database results in clear natural language. "
-    #             "Avoid technical terms."
-    #         )
-    #     },
-    #     {
-    #         "role": "user",
-    #         "content": (
-    #             f"Here is the data returned from the database:\n\n{sql_result}\n\n"
-    #             "Explain it clearly."
-    #         )
-    #     }
-    # ]).content
-
-    # return final_answer
-
 
 # ------------------ CLI Loop ------------------
 if __name__ == "__main__":
