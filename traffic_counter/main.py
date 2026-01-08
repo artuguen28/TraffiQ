@@ -1,51 +1,76 @@
-import argparse
-import cv2
-from tracker import VehicleTracker
-from counter import LaneCounter
-from visualizer import Visualizer
+import os
+import time
+from camera import Camera
+from database_client import DatabaseClient
+from detection_pipeline import CameraPipeline
 
-def main(model_path, input_path, output_path):
-    tracker = VehicleTracker(model_path)
-    line_y = 1000
-    lane_regions = [(0, 650), (800, 1100), (1200, 1600)]
-    counter = LaneCounter(lane_regions, line_y)
-    visualizer = Visualizer(line_y, lane_regions)
+def main():
+    model_path = "model/yolo12l.pt"
+    output_dir = "output_videos"
+    os.makedirs(output_dir, exist_ok=True)
 
-    cap = cv2.VideoCapture(input_path)
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    writer = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+    # --- Initialize database client ---
+    db_client = DatabaseClient()
 
+    # --- Get registered cameras from the database ---
+    cameras_data = db_client.get_registered_cameras()  # you need to implement this method
+    # Expected to return a list of dicts with keys: cam_id, video_path, lines
+
+    cameras = []
+    for cam_data in cameras_data:
+        cam_id = cam_data["cam_id"]
+        lanes = cam_data["lines"]  # assuming stored as list of tuples: [(x1,y1,x2,y2), ...]
+        video_path = cam_data["video_path"]
+        detection_output = os.path.join(output_dir, f"{cam_id}.mp4")
+        cameras.append(Camera(
+            cam_id=cam_id,
+            lanes=lanes,
+            camera_video=video_path,
+            detection_output=detection_output
+        ))
+
+    # --- Initialize pipelines ---
+    pipelines = [CameraPipeline(cam, model_path) for cam in cameras]
+
+    # Use the lowest FPS for synchronization
+    fps = min(p.fps for p in pipelines)
     frame_count = 0
+    start_time = time.time()
+
+    # --- Main Loop ---
     while True:
-        ret, frame = cap.read()
-        if not ret:
+        active_pipelines = 0
+        for p in pipelines:
+            ok = p.process_frame()
+            if not ok:
+                continue
+            active_pipelines += 1
+
+            # Save periodically
+            if p.counter.periodic_save(interval=10, db_client=db_client):
+                print(f"[SAVE] {p.camera.id} Counts at {frame_count / fps:.1f}s → {p.counter.counts}")
+
+        if active_pipelines == 0:
+            print("[INFO] All videos ended.")
             break
 
-        tracks = tracker.detect_and_track(frame)
-        counts = counter.update_counts(tracks)
-
-        frame = visualizer.draw_lines(frame)
-        frame = visualizer.draw_tracks(frame, tracks)
-        frame = visualizer.draw_counts(frame, counts)
-
-        writer.write(frame)
-
-        if counter.periodic_save(interval=9):
-            print(f"[SAVE] Counts at {frame_count/fps:.1f}s → {counts}")
-
         frame_count += 1
-        if frame_count % 30 == 0:
-            print(f"Processed {frame_count} frames...")
 
-    cap.release()
-    writer.release()
-    print(f"Final lane counts: {counter.counts}")
+        # Sync timing between cameras
+        elapsed = time.time() - start_time
+        expected = frame_count / fps
+        if expected > elapsed:
+            time.sleep(expected - elapsed)
+
+        if frame_count % 30 == 0:
+            print(f"Processed {frame_count} frames (≈ {frame_count / fps:.1f}s).")
+
+    # --- Cleanup ---
+    for p in pipelines:
+        p.cleanup()
+        print(f"Final counts → {p.camera.id}: {p.counter.counts}")
+    db_client.close()
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--input", required=True)
-    parser.add_argument("--output", default="tracked_output.mp4")
-    args = parser.parse_args()
-    main(args.model, args.input, args.output)
+    main()
