@@ -1,9 +1,9 @@
 import cv2
 
-from camera import Camera
-from counter import LaneCounter
-from tracker import VehicleTracker
-from visualizer import Visualizer
+from .camera import Camera
+from .counter import LaneCounter
+from .tracker import VehicleTracker
+from .visualizer import Visualizer
 
 
 class CameraPipeline:

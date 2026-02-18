@@ -1,4 +1,5 @@
 import os
+from typing import Optional, List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import psycopg2
@@ -29,22 +30,29 @@ client = OpenAI(api_key=openai_key)
 DB_SCHEMA = """
 CREATE TABLE cameras (
     id SERIAL PRIMARY KEY,
-    cam_id VARCHAR(50) UNIQUE NOT NULL,
+    cam_id VARCHAR(50) UNIQUE NOT NULL,  -- e.g., 'CAM_01', 'CAM_02'
     video_path TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     frame_width INTEGER NOT NULL,
     frame_height INTEGER NOT NULL,
-    lines JSONB NOT NULL
+    lines JSONB NOT NULL  -- Array of lane line coordinates
 );
 
 CREATE TABLE traffic_summary (
     id SERIAL PRIMARY KEY,
     cam_id VARCHAR(50) NOT NULL,
     timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
-    lane_counts JSONB NOT NULL,
-    max_cars_in_frame INTEGER NOT NULL,
+    lane_counts JSONB NOT NULL,  -- IMPORTANT: This is a JSON ARRAY of integers, e.g., [5, 3, 2] where each element is the vehicle count for a lane
+    max_cars_in_frame INTEGER NOT NULL,  -- Peak number of vehicles visible at once
     FOREIGN KEY (cam_id) REFERENCES cameras (cam_id)
 );
+
+-- IMPORTANT: To sum all lane counts into total vehicles, use this pattern:
+-- SELECT (SELECT SUM(value::int) FROM jsonb_array_elements_text(lane_counts)) AS total_vehicles FROM traffic_summary;
+
+-- Example: Find busiest camera by total vehicles
+-- SELECT cam_id, SUM((SELECT SUM(value::int) FROM jsonb_array_elements_text(lane_counts))) AS total_traffic
+-- FROM traffic_summary GROUP BY cam_id ORDER BY total_traffic DESC LIMIT 1;
 """
 
 class QueryRequest(BaseModel):
@@ -52,8 +60,8 @@ class QueryRequest(BaseModel):
 
 class QueryResponse(BaseModel):
     answer: str
-    sql_query: str | None = None
-    data: list | None = None
+    sql_query: Optional[str] = None
+    data: Optional[List] = None
 
 def get_db_connection():
     """Create database connection"""
