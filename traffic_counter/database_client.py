@@ -1,15 +1,20 @@
+import os
 import psycopg2
 import json
 
 class DatabaseClient:
     def __init__(self, host="localhost", db="traffic_db", user="traffic_user", password="traffic_pass", port=5432):
-        self.conn = psycopg2.connect(
-            host=host,
-            database=db,
-            user=user,
-            password=password,
-            port=port
-        )
+        db_url = os.getenv("DATABASE_URL")
+        if db_url:
+            self.conn = psycopg2.connect(db_url)
+        else:
+            self.conn = psycopg2.connect(
+                host=host,
+                database=db,
+                user=user,
+                password=password,
+                port=port
+            )
         self.conn.autocommit = True
 
     def save_interval(self, cam_id, lane_counts, max_cars):
@@ -57,6 +62,44 @@ class DatabaseClient:
                     "lines": lines
                 })
         return cameras
+
+    def delete_camera(self, cam_id: str):
+        query = "DELETE FROM cameras WHERE cam_id = %s;"
+        with self.conn.cursor() as cur:
+            cur.execute(query, (cam_id,))
+
+    def get_traffic_summary(self, cam_id=None, from_ts=None, to_ts=None):
+        conditions = []
+        params = []
+
+        if cam_id:
+            conditions.append("cam_id = %s")
+            params.append(cam_id)
+        if from_ts:
+            conditions.append("timestamp >= %s")
+            params.append(from_ts)
+        if to_ts:
+            conditions.append("timestamp <= %s")
+            params.append(to_ts)
+
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        query = f"SELECT * FROM traffic_summary {where_clause} ORDER BY timestamp DESC LIMIT 100;"
+
+        with self.conn.cursor() as cur:
+            cur.execute(query, params)
+            cols = [desc[0] for desc in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    def get_live_traffic(self):
+        query = """
+            SELECT DISTINCT ON (cam_id) cam_id, timestamp, lane_counts, max_cars_in_frame
+            FROM traffic_summary
+            ORDER BY cam_id, timestamp DESC;
+        """
+        with self.conn.cursor() as cur:
+            cur.execute(query)
+            cols = [desc[0] for desc in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
 
     def close(self):
         if self.conn:

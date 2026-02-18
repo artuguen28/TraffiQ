@@ -4,7 +4,7 @@ from .camera import Camera
 from .database_client import DatabaseClient
 from .detection_pipeline import CameraPipeline
 
-def main():
+def main(stop_event=None):
     model_path = "model/yolo26l.pt"
     output_dir = "output_videos"
     os.makedirs(output_dir, exist_ok=True)
@@ -38,7 +38,7 @@ def main():
     start_time = time.time()
 
     # --- Main Loop ---
-    while frame_count < 1000:
+    while frame_count < 3000 and (stop_event is None or not stop_event.is_set()):
         active_pipelines = 0
         for p in pipelines:
             ok = p.process_frame()

@@ -1,0 +1,29 @@
+# Data & large files
+postgres_data/
+model/
+*.mp4
+output_videos/
+
+# Python artifacts
+__pycache__/
+*.py[codz]
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets & local config
+.env
+rag/.env
+
+# Dev tools
+.git/
+.gitignore
+.ruff_cache/
+.mypy_cache/
+
+# Datasets
+kaggle_dataset_analysis/
