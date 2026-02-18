@@ -3,7 +3,7 @@ import cv2
 import math
 import tkinter as tk
 import copy
-from traffic_counter.database_client import DatabaseClient  # your class from earlier
+import requests
 
 # ---------------- Command-line arguments ----------------
 parser = argparse.ArgumentParser(description="Traffic camera line editor")
@@ -36,7 +36,7 @@ SELECT_RADIUS = 10
 
 MARGIN = 100
 
-db = DatabaseClient()  # initialize your database client
+API_URL = "http://localhost:8000"
 # ---------------------------------------
 
 lines = []
@@ -112,13 +112,13 @@ def mouse_callback(event, x, y, flags, param):
     # Save button
     if event == cv2.EVENT_LBUTTONDOWN:
         if inside_rect(ix, iy, BTN_SAVE_TL, BTN_SAVE_BR):
-            db.save_camera(
-                cam_id=CAM_ID,
-                video_path=VIDEO_PATH,
-                frame_width=base.shape[1],
-                frame_height=base.shape[0],
-                lines=lines
-            )
+            requests.post(f"{API_URL}/cameras", json={
+                "cam_id": CAM_ID,
+                "video_path": VIDEO_PATH,
+                "frame_width": base.shape[1],
+                "frame_height": base.shape[0],
+                "lines": [list(line) for line in lines],
+            })
             print(f"Camera {CAM_ID} saved with {len(lines)} lines")
             return
 
@@ -222,5 +222,4 @@ while True:
         mode = cv2.WINDOW_FULLSCREEN if fullscreen else cv2.WINDOW_NORMAL
         cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, mode)
 
-db.close()
 cv2.destroyAllWindows()

@@ -1,32 +1,23 @@
 import os
+import json
 from typing import Optional, List
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from openai import OpenAI
-import json
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
-app = FastAPI()
+router = APIRouter()
 
-# Environment variables
 db_url = os.getenv("DATABASE_URL")
 model_name = os.getenv("MODEL_NAME", "gpt-4")
 openai_key = os.getenv("OPENAI_API_KEY")
 
-# Validate environment variables
-if not openai_key:
-    raise ValueError("OPENAI_API_KEY environment variable must be set")
-if not db_url:
-    raise ValueError("DATABASE_URL environment variable must be set")
-
 client = OpenAI(api_key=openai_key)
 
-# Database schema for context
 DB_SCHEMA = """
 CREATE TABLE cameras (
     id SERIAL PRIMARY KEY,
@@ -55,20 +46,22 @@ CREATE TABLE traffic_summary (
 -- FROM traffic_summary GROUP BY cam_id ORDER BY total_traffic DESC LIMIT 1;
 """
 
+
 class QueryRequest(BaseModel):
     question: str
+
 
 class QueryResponse(BaseModel):
     answer: str
     sql_query: Optional[str] = None
     data: Optional[List] = None
 
+
 def get_db_connection():
-    """Create database connection"""
     return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
 
+
 def execute_sql(sql_query: str):
-    """Execute SQL query and return results"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -80,9 +73,8 @@ def execute_sql(sql_query: str):
     except Exception as e:
         raise Exception(f"Database error: {str(e)}")
 
+
 def get_llm_response(question: str):
-    """Get response from LLM with optional SQL generation"""
-    
     system_prompt = f"""You are a helpful assistant for a traffic monitoring system that analyzes camera footage and vehicle counts.
 
 Database Schema:
@@ -113,71 +105,52 @@ Always respond with valid JSON only."""
             model=model_name,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": question}
+                {"role": "user", "content": question},
             ],
-            temperature=0.1
+            temperature=0.1,
         )
-        
+
         content = response.choices[0].message.content.strip()
-        
-        # Parse JSON response
+
         if content.startswith("```json"):
             content = content.replace("```json", "").replace("```", "").strip()
-        
+
         return json.loads(content)
-    
+
     except Exception as e:
         raise Exception(f"LLM error: {str(e)}")
 
-@app.post("/query", response_model=QueryResponse)
+
+@router.post("/query", response_model=QueryResponse)
 async def query_endpoint(request: QueryRequest):
-    """
-    Main endpoint to handle user questions about traffic monitoring system
-    """
     try:
-        # Get LLM decision
         llm_response = get_llm_response(request.question)
-        
+
         if llm_response.get("needs_db"):
-            # Database query needed
             sql_query = llm_response.get("sql")
             data = execute_sql(sql_query)
-            
-            # Generate natural language answer from data
+
             followup_prompt = f"""Based on this query result, provide a clear natural language answer to: "{request.question}"
 
 Query: {sql_query}
 Results: {json.dumps(data, default=str)}
 
 Provide a concise, helpful answer."""
-            
+
             final_response = client.chat.completions.create(
                 model=model_name,
                 messages=[{"role": "user", "content": followup_prompt}],
-                temperature=0.3
+                temperature=0.3,
             )
-            
+
             answer = final_response.choices[0].message.content.strip()
-            
-            return QueryResponse(
-                answer=answer,
-                sql_query=sql_query,
-                data=data
-            )
+
+            return QueryResponse(answer=answer, sql_query=sql_query, data=data)
         else:
-            # No database needed - direct answer
             answer = llm_response.get("answer")
             if isinstance(answer, list):
                 answer = "\n".join(str(item) for item in answer)
-            return QueryResponse(
-                answer=answer,
-                sql_query=None,
-                data=None
-            )
-    
+            return QueryResponse(answer=answer, sql_query=None, data=None)
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/")
-async def root():
-    return {"message": "Traffic Monitoring Chatbot API", "endpoint": "/query"}
