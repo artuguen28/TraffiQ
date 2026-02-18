@@ -166,8 +166,11 @@ Provide a concise, helpful answer."""
             )
         else:
             # No database needed - direct answer
+            answer = llm_response.get("answer")
+            if isinstance(answer, list):
+                answer = "\n".join(str(item) for item in answer)
             return QueryResponse(
-                answer=llm_response.get("answer"),
+                answer=answer,
                 sql_query=None,
                 data=None
             )
