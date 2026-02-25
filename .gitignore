@@ -213,3 +213,6 @@ kaggle_dataset_analysis
 
 *.mp4
 
+# TLS certificates (generated locally — never commit private keys)
+nginx/certs/
+

@@ -1,22 +1,22 @@
 import os
-import signal
 import subprocess
 import requests
 import gradio as gr
 import json
 
 API_URL = os.getenv("API_URL", "http://localhost:8000/rag/query")
+API_KEY = os.getenv("API_KEY", "")
 
 
 def chat_fn(message, history, show_sql, show_raw_data):
     if history is None:
         history = []
 
-    # Call the API
     payload = {"question": message}
+    headers = {"X-API-Key": API_KEY} if API_KEY else {}
 
     try:
-        resp = requests.post(API_URL, json=payload, timeout=30)
+        resp = requests.post(API_URL, json=payload, headers=headers, timeout=30)
 
         if resp.status_code != 200:
             assistant_msg = f"❌ Error: {resp.text}"
@@ -89,20 +89,5 @@ with gr.Blocks() as demo:
     )
     clear.click(lambda: None, None, chatbot)
 
-def free_port(port):
-    result = subprocess.run(["lsof", "-t", f"-i:{port}"], capture_output=True, text=True)
-    for pid in result.stdout.strip().split():
-        try:
-            os.kill(int(pid), signal.SIGTERM)
-        except ProcessLookupError:
-            pass
 
-def shutdown(sig, frame):
-    print("\n[INFO] Shutting down...")
-    demo.close()
-
-signal.signal(signal.SIGINT, shutdown)
-signal.signal(signal.SIGTERM, shutdown)
-
-free_port(7860)
 demo.launch(server_name="0.0.0.0", server_port=7860, theme=gr.themes.Soft())

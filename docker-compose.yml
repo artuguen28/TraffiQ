@@ -1,6 +1,21 @@
 version: "3.9"
 
 services:
+  nginx:
+    image: nginx:stable-alpine
+    container_name: traffiq_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend
+      - frontend
+    # To generate development certs run:  bash nginx/generate-certs.sh
+
   postgres:
     image: timescale/timescaledb:latest-pg16
     container_name: traffic_postgres
@@ -29,6 +44,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://traffic_user:traffic_pass@postgres:5432/traffic_db
+      ALLOWED_ORIGINS: http://localhost:7860
     ports:
       - "8000:8000"
     depends_on:
@@ -41,6 +57,7 @@ services:
       dockerfile: Dockerfile.frontend
     container_name: traffiq_frontend
     restart: always
+    env_file: .env
     environment:
       API_URL: http://backend:8000/rag/query
     ports:
