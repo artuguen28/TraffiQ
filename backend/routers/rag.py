@@ -61,7 +61,41 @@ def get_db_connection():
     return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
 
 
+_FORBIDDEN_KEYWORDS = {
+    "insert", "update", "delete", "drop", "truncate", "create", "alter",
+    "replace", "exec", "execute", "call", "copy", "grant", "revoke",
+    "merge", "upsert", "attach", "detach",
+}
+
+
+def validate_sql(sql_query: str) -> None:
+    """Raise ValueError if the query is not a plain SELECT statement."""
+    # Strip single-line and multi-line comments before analysing
+    import re
+    cleaned = re.sub(r"--[^\n]*", " ", sql_query)
+    cleaned = re.sub(r"/\*.*?\*/", " ", cleaned, flags=re.DOTALL)
+
+    tokens = cleaned.lower().split()
+    if not tokens:
+        raise ValueError("Empty SQL query.")
+
+    if tokens[0] != "select":
+        raise ValueError(
+            f"Only SELECT queries are permitted. Got: '{tokens[0].upper()}'."
+        )
+
+    for token in tokens:
+        # Strip trailing punctuation that may appear after a keyword (e.g. "drop;")
+        word = token.rstrip(";(),")
+        if word in _FORBIDDEN_KEYWORDS:
+            raise ValueError(
+                f"Forbidden SQL keyword detected: '{word.upper()}'. "
+                "Only read-only SELECT queries are allowed."
+            )
+
+
 def execute_sql(sql_query: str):
+    validate_sql(sql_query)
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -70,6 +104,8 @@ def execute_sql(sql_query: str):
         cursor.close()
         conn.close()
         return [dict(row) for row in results]
+    except ValueError:
+        raise
     except Exception as e:
         raise Exception(f"Database error: {str(e)}")
 
@@ -152,5 +188,7 @@ Provide a concise, helpful answer."""
                 answer = "\n".join(str(item) for item in answer)
             return QueryResponse(answer=answer, sql_query=None, data=None)
 
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
